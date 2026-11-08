@@ -104,15 +104,25 @@ footer { max-width: 1120px; margin: 36px auto 40px; padding: 0 20px; color: var(
     <div class="tiles" id="tiles"></div>
 
     <h2>Conectividad entre submercados</h2>
-    <p class="note">Qué parte de la volatilidad de cada submercado proviene de los otros (Diebold-Yilmaz sobre varianza realizada del CMO semihorario). Los valores se muestran desde 2025 porque las ventanas que cubren 2023 son ruido: más del 90&nbsp;% de esas medias horas tienen CMO cero.</p>
-    <div class="grid2">
-      <div class="card"><h3>Índice de conectividad total</h3><p class="sub-title">%, ventanas móviles, muestreo semanal</p><div id="chart-tsi"></div></div>
-      <div class="card"><h3>Posición neta por submercado</h3><p class="sub-title">Puntos porcentuales, ventana de 180 días. Positivo: transmite más de lo que recibe</p><div id="chart-net"></div></div>
+    <div class="caveat" role="note">
+      <div><b>Cómo leer esta pestaña.</b> En Brasil el precio no sale de ofertas: lo produce la cadena de optimización NEWAVE, DECOMP y DESSEM. Por eso esta conectividad no mide cómo reaccionan unos agentes a otros. Los submercados comparten la función de costo futuro y los escenarios hidrológicos, así que parte del movimiento conjunto viene de la propia construcción del modelo. Lo más informativo es cuándo se separan: una caída de la conectividad suele reflejar que los límites de intercambio pasan a restringir el sistema.</div>
+    </div>
+    <p class="note" style="margin-top:12px">Qué parte de la varianza de cada submercado se comparte con los otros (Diebold-Yilmaz sobre varianza realizada del CMO semihorario, antes del piso y el techo). Los valores se muestran desde 2025 porque las ventanas que cubren 2023 son ruido: más del 90&nbsp;% de esas medias horas tienen CMO cero.</p>
+    <div class="card">
+      <h3>Conectividad y separación de precios</h3>
+      <p class="sub-title" id="tsi-separation-note"></p>
+      <h3 style="margin-top:10px">Índice de conectividad total</h3>
+      <p class="sub-title">%, ventanas móviles, muestreo semanal</p>
+      <div id="chart-tsi"></div>
+      <h3 style="margin-top:14px">Separación media de precios</h3>
+      <p class="sub-title">% de medias horas con CMO distinto, promedio de los seis pares, ventana de 180 días</p>
+      <div id="chart-separation"></div>
     </div>
     <div class="grid2" style="margin-top:12px">
-      <div class="card"><h3 id="matrix-title"></h3><p class="sub-title">% de la varianza de la fila explicada por la columna</p><div id="matrix"></div></div>
-      <div class="card"><h3>Separación de precios por par de submercados</h3><p class="sub-title">% de medias horas con CMO distinto, por mes</p><div id="separation"></div></div>
+      <div class="card"><h3>Aporte neto a la varianza compartida</h3><p class="sub-title">Puntos porcentuales, ventana de 180 días. Positivo: su varianza explica más de la de los otros que a la inversa</p><div id="chart-net"></div></div>
+      <div class="card"><h3 id="matrix-title"></h3><p class="sub-title">% de la varianza de la fila asociado a la columna</p><div id="matrix"></div></div>
     </div>
+    <div class="card"><h3>Separación de precios por par de submercados</h3><p class="sub-title">% de medias horas con CMO distinto, por mes</p><div id="separation"></div></div>
 
     <h2>Contexto del mercado</h2>
     <p class="note">Promedios semanales desde 2025.</p>
@@ -133,6 +143,9 @@ footer { max-width: 1120px; margin: 36px auto 40px; padding: 0 20px; color: var(
       <label class="filter" id="source-filter" hidden>Fuente
         <select id="source"><option value="Solar">Solar</option><option value="Eolica">Eólica</option><option value="Hidro">Hidráulica</option></select>
       </label>
+    </div>
+    <div class="caveat" role="note">
+      <div><b>Qué son estos pronósticos.</b> Son modelos estadísticos que aprenden de la historia de precios, hidrología y carga. No reproducen NEWAVE, DECOMP ni DESSEM, y todavía no incorporan la función de costo futuro ni las revisiones semanales de DECOMP. No sustituyen a la cadena oficial: buscan dar una señal temprana de la forma horaria del precio.</div>
     </div>
     <h2 id="forecast-title"></h2>
     <p class="note" id="forecast-note"></p>
@@ -212,7 +225,7 @@ const renderers = { market: [], next: [] };
 function register(tab, render) { renderers[tab].push(render); }
 
 /* series: [{name, color, points: [[ms, value]]}]. forecast: {issue, points: [[ms, value, low, high]]}. */
-function lineChart(host, { series, fmt = f1, height = 200, forecast = null, zero = false, rows = 52 }) {
+function lineChart(host, { series, fmt = f1, height = 200, forecast = null, zero = false, rows = 52, marginRight = null }) {
   const box = el("div");
   const legend = el("div", { className: "legend" });
   if (series.length > 1) for (const s of series) {
@@ -230,7 +243,7 @@ function lineChart(host, { series, fmt = f1, height = 200, forecast = null, zero
     const width = box.clientWidth;
     if (!width) return;
     const labels = series.length > 1 && series.length <= 4;
-    const m = { l: 48, r: labels ? 56 : 14, t: 10, b: 24 };
+    const m = { l: 48, r: marginRight ?? (labels ? 56 : 14), t: 10, b: 24 };
     const w = width - m.l - m.r, h = height - m.t - m.b;
     const all = series.flatMap((s) => s.points.filter((p) => p[1] != null));
     const xs = [...new Set(all.map((p) => p[0]).concat(forecast ? forecast.points.map((p) => p[0]) : []))].sort((a, b) => a - b);
@@ -387,7 +400,7 @@ function renderMarket(d) {
   document.getElementById("tiles").replaceChildren(
     tile("Conectividad total (180 días)", f1(k.tsi) + " %", `${signed(k.tsi_change)} pp en 30 días · ${fmtDay(k.as_of)}`),
     tile("Tendencia estructural (365 días)", f1(k.tsi_365) + " %", "Referencia de largo plazo"),
-    tile("Mayor transmisor neto", SUB_NAME[k.transmitter], `${signed(k.transmitter_value)} pp · mayor receptor: ${SUB_NAME[k.receiver]} (${signed(k.receiver_value)} pp)`),
+    tile("Mayor aporte neto a la varianza", SUB_NAME[k.top_net], `${signed(k.top_net_value)} pp · menor aporte: ${SUB_NAME[k.bottom_net]} (${signed(k.bottom_net_value)} pp)`),
     tile("Separación de precios (7 días)", f1(k.separation_7d) + " %", `Promedio de 365 días: ${f1(k.separation_365d)} %`),
   );
   const tsi = d.market.tsi;
@@ -400,7 +413,11 @@ function renderMarket(d) {
   add("chart-tsi", { series: [
     { name: "Ventana de 180 días", short: "180 d", color: "var(--s1)", points: dates.map((x, i) => [x, tsi.w180[i]]) },
     { name: "Ventana de 365 días", short: "365 d", color: "var(--neutral)", points: dates.map((x, i) => [x, tsi.w365[i]]) },
-  ] });
+  ], marginRight: 56, height: 180 });
+  document.getElementById("tsi-separation-note").textContent = `Misma ventana de tiempo en ambos gráficos. Correlación entre conectividad y separación desde 2025 (ventana de 180 días): ${nf(2).format(k.tsi_separation_correlation)}.`;
+  add("chart-separation", { series: [
+    { name: "Separación media", color: "var(--s1)", points: dates.map((x, i) => [x, tsi.separation[i]]) },
+  ], marginRight: 56, height: 180 });
   add("chart-net", { series: fromColumns(d.market.net, SUB), fmt: f1, zero: true });
   const c = d.market.context;
   add("chart-pld", { series: fromColumns(c.pld, SUB), fmt: f0, zero: true });
@@ -410,11 +427,11 @@ function renderMarket(d) {
   add("chart-load", { series: fromColumns(c.load, SUB), fmt: f0, zero: true });
 
   const st = d.market.static;
-  document.getElementById("matrix-title").textContent = `Quién le transmite a quién (desde ${fmtDay(st.from)}, conectividad ${f1(st.tsi)} %)`;
+  document.getElementById("matrix-title").textContent = `Cómo se reparte la varianza entre submercados (desde ${fmtDay(st.from)}, conectividad ${f1(st.tsi)} %)`;
   const names = st.columns.slice(0, 4);
   const off = st.values.slice(0, 4).flatMap((row, i) => row.slice(0, 4).filter((_, j) => i !== j));
   const low = Math.min(...off), high = Math.max(...off);
-  const matrix = el("table", { className: "heat" }, el("thead", {}, el("tr", {}, el("th", { textContent: "Recibe ↓ · Transmite →" }), ...names.map((n) => el("th", { textContent: SUB_NAME[n] })))));
+  const matrix = el("table", { className: "heat" }, el("thead", {}, el("tr", {}, el("th", { textContent: "Varianza de ↓ · Asociada a →" }), ...names.map((n) => el("th", { textContent: SUB_NAME[n] })))));
   const mb = el("tbody");
   st.rows.slice(0, 4).forEach((rowName, i) => {
     const row = el("tr", {}, el("td", { textContent: SUB_NAME[rowName] }));
