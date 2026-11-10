@@ -84,6 +84,8 @@ select { font: inherit; color: var(--ink); background: var(--surface); border: 1
 #tooltip span { color: var(--ink-2); }
 footer { max-width: 1120px; margin: 36px auto 40px; padding: 0 20px; color: var(--muted); font-size: 12.5px; }
 [hidden] { display: none !important; }
+.bar { display: inline-block; height: 8px; border-radius: 0 4px 4px 0; background: var(--neutral); vertical-align: middle; margin-right: 6px; }
+td.share { text-align: left; min-width: 120px; }
 </style>
 </head>
 <body>
@@ -92,22 +94,53 @@ footer { max-width: 1120px; margin: 36px auto 40px; padding: 0 20px; color: var(
   <p class="lede" id="freshness"></p>
   <div class="caveat" role="note">
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 15 14H1z" fill="var(--warning)"/><path d="M8 6v4M8 11.6v.4" stroke="#0b0b0b" stroke-width="1.5" stroke-linecap="round"/></svg>
-    <div><b>MVP en análisis.</b> Los precios son una aproximación: CMO de ONS por hora, limitado al piso y al techo del PLD. Muestran bien la forma horaria, pero no el nivel exacto, y no sirven para liquidar contratos.</div>
+    <div id="price-note"></div>
   </div>
   <div class="tabs" role="tablist">
-    <button role="tab" id="tab-market" aria-controls="market" aria-selected="true">Mercado</button>
-    <button role="tab" id="tab-next" aria-controls="next" aria-selected="false">Próximos días</button>
+    <button role="tab" id="tab-next" aria-controls="next" aria-selected="true">Pronósticos</button>
+    <button role="tab" id="tab-market" aria-controls="market" aria-selected="false">Contexto del mercado</button>
   </div>
 </header>
 <main>
-  <section id="market" role="tabpanel" aria-labelledby="tab-market">
-    <div class="tiles" id="tiles"></div>
+
+  <section id="next" role="tabpanel" aria-labelledby="tab-next">
+    <div class="filters">
+      <label class="filter">Variable
+        <select id="target"><option value="spread">Spread pico–solar</option><option value="imd">Prima de modulación</option></select>
+      </label>
+      <label class="filter" id="source-filter" hidden>Fuente
+        <select id="source"><option value="Solar">Solar</option><option value="Eolica">Eólica</option><option value="Hidro">Hidráulica</option></select>
+      </label>
+    </div>
+    <div class="caveat" role="note">
+      <div id="model-note"></div>
+    </div>
+    <h2 id="forecast-title"></h2>
+    <p class="note" id="forecast-note"></p>
+    <div class="grid2" id="forecast-charts"></div>
+
+    <h2>Backtest</h2>
+    <p class="note" id="eval-note"></p>
+    <div class="grid2">
+      <div class="card"><h3>Frente al mejor baseline</h3><div class="scroll" id="eval-table"></div></div>
+      <div class="card"><h3>Error por horizonte</h3><div class="scroll" id="horizon-table"></div></div>
+    </div>
+    <div class="card"><h3>Error por serie</h3><div class="scroll" id="series-table"></div></div>
+
+    <h2>IMD del mes: proyección de cierre</h2>
+    <p class="note" id="month-note"></p>
+    <div class="card"><h3>Acumulado, proyección y mes anterior</h3><p class="sub-title">R$/MWh, calculado con CMO</p><div class="scroll" id="month-table"></div></div>
+    <div class="card"><h3>Backtest de la proyección</h3><p class="sub-title" id="projection-eval-note"></p><div class="scroll" id="projection-eval"></div></div>
+  </section>
+  <section id="market" role="tabpanel" aria-labelledby="tab-market" hidden>
+    <h2>Matriz de generación</h2>
+    <div class="card"><h3>Participación por fuente</h3><p class="sub-title" id="shares-note"></p><div class="scroll" id="shares"></div></div>
+
+    <h2>Indicadores del mercado</h2>
+    <div class="tiles" id="tiles" style="margin-top:8px"></div>
 
     <h2>Conectividad entre submercados</h2>
-    <div class="caveat" role="note">
-      <div><b>Cómo leer esta pestaña.</b> En Brasil el precio no sale de ofertas: lo produce la cadena de optimización NEWAVE, DECOMP y DESSEM. Por eso esta conectividad no mide cómo reaccionan unos agentes a otros. Los submercados comparten la función de costo futuro y los escenarios hidrológicos, así que parte del movimiento conjunto viene de la propia construcción del modelo. Lo más informativo es cuándo se separan: una caída de la conectividad suele reflejar que los límites de intercambio pasan a restringir el sistema.</div>
-    </div>
-    <p class="note" style="margin-top:12px">Qué parte de la varianza de cada submercado se comparte con los otros (Diebold-Yilmaz sobre varianza realizada del CMO semihorario, antes del piso y el techo). Los valores se muestran desde 2025 porque las ventanas que cubren 2023 son ruido: más del 90&nbsp;% de esas medias horas tienen CMO cero.</p>
+    <p class="note">Diebold-Yilmaz sobre la varianza realizada diaria del CMO semihorario, antes de piso y techo. Como los cuatro CMO salen de una misma optimización, buena parte del co-movimiento es estructural; la señal está en las caídas, que suelen coincidir con límites de intercambio activos. Serie desde 2025: en 2023 más del 90&nbsp;% de las medias horas tuvieron CMO cero y las ventanas que lo incluyen no son interpretables.</p>
     <div class="card">
       <h3>Conectividad y separación de precios</h3>
       <p class="sub-title" id="tsi-separation-note"></p>
@@ -119,49 +152,20 @@ footer { max-width: 1120px; margin: 36px auto 40px; padding: 0 20px; color: var(
       <div id="chart-separation"></div>
     </div>
     <div class="grid2" style="margin-top:12px">
-      <div class="card"><h3>Aporte neto a la varianza compartida</h3><p class="sub-title">Puntos porcentuales, ventana de 180 días. Positivo: su varianza explica más de la de los otros que a la inversa</p><div id="chart-net"></div></div>
+      <div class="card"><h3>Aporte neto a la varianza compartida</h3><p class="sub-title">pp, ventana de 180 días. Positivo: transmite más varianza de la que recibe</p><div id="chart-net"></div></div>
       <div class="card"><h3 id="matrix-title"></h3><p class="sub-title">% de la varianza de la fila asociado a la columna</p><div id="matrix"></div></div>
     </div>
     <div class="card"><h3>Separación de precios por par de submercados</h3><p class="sub-title">% de medias horas con CMO distinto, por mes</p><div id="separation"></div></div>
 
-    <h2>Contexto del mercado</h2>
+    <h2>Precios, hidrología y carga</h2>
     <p class="note">Promedios semanales desde 2025.</p>
     <div class="grid2">
-      <div class="card"><h3>Precio medio (aproximación del PLD)</h3><p class="sub-title">R$/MWh</p><div id="chart-pld"></div></div>
-      <div class="card"><h3>Horas en el piso del PLD</h3><p class="sub-title">% de las horas</p><div id="chart-floor"></div></div>
-      <div class="card"><h3>Energía natural afluente</h3><p class="sub-title">% de la media histórica</p><div id="chart-ena"></div></div>
-      <div class="card"><h3>Energía almacenada</h3><p class="sub-title">% de la capacidad máxima</p><div id="chart-ear"></div></div>
+      <div class="card"><h3>Precio medio (CMO con piso y techo)</h3><p class="sub-title">R$/MWh</p><div id="chart-pld"></div></div>
+      <div class="card"><h3>Horas en el piso</h3><p class="sub-title">% de las horas</p><div id="chart-floor"></div></div>
+      <div class="card"><h3>Energía natural afluente</h3><p class="sub-title">% de la MLT</p><div id="chart-ena"></div></div>
+      <div class="card"><h3>Energía almacenada</h3><p class="sub-title">% del EAR máximo</p><div id="chart-ear"></div></div>
       <div class="card"><h3>Carga</h3><p class="sub-title">MW medios</p><div id="chart-load"></div></div>
     </div>
-  </section>
-
-  <section id="next" role="tabpanel" aria-labelledby="tab-next" hidden>
-    <div class="filters">
-      <label class="filter">Variable
-        <select id="target"><option value="spread">Spread pico–solar</option><option value="imd">Prima de modulación</option></select>
-      </label>
-      <label class="filter" id="source-filter" hidden>Fuente
-        <select id="source"><option value="Solar">Solar</option><option value="Eolica">Eólica</option><option value="Hidro">Hidráulica</option></select>
-      </label>
-    </div>
-    <div class="caveat" role="note">
-      <div><b>Qué son estos pronósticos.</b> Son modelos estadísticos que aprenden de la historia de precios, hidrología y carga. No reproducen NEWAVE, DECOMP ni DESSEM, y todavía no incorporan la función de costo futuro ni las revisiones semanales de DECOMP. No sustituyen a la cadena oficial: buscan dar una señal temprana de la forma horaria del precio.</div>
-    </div>
-    <h2 id="forecast-title"></h2>
-    <p class="note" id="forecast-note"></p>
-    <div class="grid2" id="forecast-charts"></div>
-
-    <h2>¿Qué tan bien funciona?</h2>
-    <p class="note" id="eval-note"></p>
-    <div class="grid2">
-      <div class="card"><h3>Backtest frente al mejor baseline</h3><div class="scroll" id="eval-table"></div></div>
-      <div class="card"><h3>Error por horizonte</h3><div class="scroll" id="horizon-table"></div></div>
-    </div>
-    <div class="card"><h3>Error por serie</h3><div class="scroll" id="series-table"></div></div>
-
-    <h2>Modulación del mes en curso</h2>
-    <p class="note" id="month-note"></p>
-    <div class="card"><div class="scroll" id="month-table"></div></div>
   </section>
 </main>
 <footer id="footer"></footer>
@@ -395,7 +399,28 @@ function tile(label, value, sub) {
   return el("div", { className: "tile" }, el("div", { className: "label", textContent: label }), el("div", { className: "value", textContent: value }), el("div", { className: "sub", textContent: sub }));
 }
 
+const SHARE_NAME = { Hidro: "Hidráulica", Eolica: "Eólica", Solar: "Solar centralizada", SolarMMGD: "Solar distribuida (MMGD)", Termica: "Térmica", Nuclear: "Nuclear" };
+function renderShares(d) {
+  const sh = d.market.shares, years = sh.years, last = years.length - 1;
+  document.getElementById("shares-note").textContent = `% de la generación verificada (ONS). MMGD: estimación de ONS. ${years[last]} hasta el ${fmtDay(d.through.generation)}.`;
+  const max = Math.max(...sh.sources.flatMap((s) => sh.values[s]));
+  const head = ["Fuente", ...years.map((y, i) => (i === last ? `${y} (parcial)` : y)), `Cambio ${years[0]}–${years[last]}`];
+  const rows = sh.sources.map((s) => {
+    const v = sh.values[s];
+    const cells = v.map((x) => {
+      const td = el("td", { className: "share" });
+      const b = el("span", { className: "bar" });
+      b.style.width = `${Math.max(2, (x / max) * 90)}px`;
+      td.append(b, f1(x) + " %");
+      return td;
+    });
+    return el("tr", {}, textCell(SHARE_NAME[s]), ...cells, textCell(signed(v[last] - v[0]) + " pp"));
+  });
+  document.getElementById("shares").replaceChildren(simpleTable(head, rows));
+}
+
 function renderMarket(d) {
+  renderShares(d);
   const k = d.market.kpis;
   document.getElementById("tiles").replaceChildren(
     tile("Conectividad total (180 días)", f1(k.tsi) + " %", `${signed(k.tsi_change)} pp en 30 días · ${fmtDay(k.as_of)}`),
@@ -414,7 +439,7 @@ function renderMarket(d) {
     { name: "Ventana de 180 días", short: "180 d", color: "var(--s1)", points: dates.map((x, i) => [x, tsi.w180[i]]) },
     { name: "Ventana de 365 días", short: "365 d", color: "var(--neutral)", points: dates.map((x, i) => [x, tsi.w365[i]]) },
   ], marginRight: 56, height: 180 });
-  document.getElementById("tsi-separation-note").textContent = `Misma ventana de tiempo en ambos gráficos. Correlación entre conectividad y separación desde 2025 (ventana de 180 días): ${nf(2).format(k.tsi_separation_correlation)}.`;
+  document.getElementById("tsi-separation-note").textContent = `Correlación entre ambas desde 2025 (ventana de 180 días): ${nf(2).format(k.tsi_separation_correlation)}. Parte es mecánica: en las medias horas con precio igual, las variaciones de los submercados coinciden.`;
   add("chart-separation", { series: [
     { name: "Separación media", color: "var(--s1)", points: dates.map((x, i) => [x, tsi.separation[i]]) },
   ], marginRight: 56, height: 180 });
@@ -427,7 +452,7 @@ function renderMarket(d) {
   add("chart-load", { series: fromColumns(c.load, SUB), fmt: f0, zero: true });
 
   const st = d.market.static;
-  document.getElementById("matrix-title").textContent = `Cómo se reparte la varianza entre submercados (desde ${fmtDay(st.from)}, conectividad ${f1(st.tsi)} %)`;
+  document.getElementById("matrix-title").textContent = `Matriz de conectividad desde ${fmtDay(st.from)} (total ${f1(st.tsi)} %)`;
   const names = st.columns.slice(0, 4);
   const off = st.values.slice(0, 4).flatMap((row, i) => row.slice(0, 4).filter((_, j) => i !== j));
   const low = Math.min(...off), high = Math.max(...off);
@@ -481,9 +506,9 @@ function renderNext(d) {
     const name = target === "spread" ? "Spread pico–solar" : `Prima de modulación · ${SOURCE[sourceEl.value]}`;
     document.getElementById("forecast-title").textContent = `${name}: próximos 7 días`;
     document.getElementById("forecast-note").textContent = (target === "spread"
-      ? "Precio medio de 18:00 a 20:59 menos el de 10:00 a 14:59, en R$/MWh."
-      : "Precio capturado por la fuente menos el precio medio del día, en R$/MWh. Sigue la metodología pública de los Índices de Modulação de Dcide, aproximada con CMO y a escala diaria.")
-      + ` Emitido el ${fmtDay(data.issue)} con ${MODEL[data.model]}. La banda es el error histórico entre los percentiles 10 y 90.`;
+      ? "Precio medio de 18:00 a 20:59 menos el de 10:00 a 14:59, R$/MWh."
+      : "Precio capturado por la fuente menos precio medio del día, R$/MWh: la fórmula del IMD a escala diaria, con CMO.")
+      + ` Emitido el ${fmtDay(data.issue)} (07:00 de Brasília) con ${MODEL[data.model]}. Banda: percentiles 10 y 90 del error de backtest.`;
     const host = document.getElementById("forecast-charts");
     host.replaceChildren();
     chartRenders = SUB.map((sub) => {
@@ -498,7 +523,7 @@ function renderNext(d) {
         forecast: { issue: ms(data.issue), color: COLOR[sub], points: s.forecast.map(([t, v, lo, hi]) => [ms(t), v, lo, hi]) },
         fmt: f0, zero: true, height: 190, rows: 45 });
     });
-    document.getElementById("eval-note").textContent = `Pronósticos fuera de muestra emitidos entre ${fmtDay(data.period[0])} y ${fmtDay(data.period[1])} (${f0(data.issues)} días). Valores más bajos de error son mejores. DM negativo indica que el modelo supera al baseline; con |DM| mayor que 2 la diferencia suele ser significativa. El modelo en uso se eligió mirando este período, así que su resultado puede estar algo inflado hasta que lo confirme el registro en vivo.`;
+    document.getElementById("eval-note").textContent = `Walk-forward fuera de muestra, emisiones del ${fmtDay(data.period[0])} al ${fmtDay(data.period[1])} (${f0(data.issues)} días). Error absoluto medio en R$/MWh. DM: Diebold-Mariano contra el baseline; negativo favorece al modelo, |DM| > 2 es significativo al 5 %. El modelo en uso y las variables de DECOMP y clima se eligieron mirando este período.`;
     document.getElementById("eval-table").replaceChildren(simpleTable(["Modelo", "Error (R$/MWh)", "Mejora", "DM"], data.summary.map((r) => {
       const inUse = r.model === data.model;
       const first = el("td", { textContent: MODEL[r.model] });
@@ -514,13 +539,20 @@ function renderNext(d) {
   register("next", () => chartRenders.forEach((r) => r && r()));
   update();
 
-  const month = d.month;
-  document.getElementById("month-note").textContent = `Prima acumulada de ${month.current} con generación hasta ${fmtDay(d.through.generation)}, frente al mes cerrado ${month.previous}. El mes en curso todavía puede cambiar bastante. R$/MWh, aproximada con CMO: no es un índice oficial.`;
-  const bySource = {};
-  for (const r of month.rows) { const [s, sub] = r.series.split("_"); (bySource[s] ||= {})[sub] = r; }
-  const monthName = (m) => new Intl.DateTimeFormat("es", { month: "short", timeZone: "UTC" }).format(Date.parse(m + "-01T00:00:00Z"));
-  const heads = ["Fuente", ...SUB.flatMap((s) => [`${SUB_NAME[s]} ${monthName(month.current)}`, `${SUB_NAME[s]} ${monthName(month.previous)}`])];
-  document.getElementById("month-table").replaceChildren(simpleTable(heads, Object.keys(SOURCE).map((s) => el("tr", {}, textCell(SOURCE[s]), ...SUB.flatMap((sub) => [textCell(f1(bySource[s][sub].current)), textCell(f1(bySource[s][sub].previous))])))));
+  const month = d.month, pj = month.projection;
+  document.getElementById("month-note").textContent = `IMD de ${month.current} calculado con CMO, emitido el ${fmtDay(pj.issue)} a ${f0(pj.days_left)} días del cierre. Días con generación publicada (${f0(pj.known_days)}): observados. D-1 y D: perfil horario de la última semana al precio publicado. Resto del mes: pronóstico diario de la prima (D+1 a D+7, luego su promedio) con generación y precio constantes, lo que omite el componente entre días. Banda: percentiles 10 y 90 del error histórico de cada serie a una distancia similar del cierre.`;
+  const order = Object.keys(SOURCE).flatMap((src) => SUB.map((sub) => `${src}_${sub}`));
+  const bySeries = Object.fromEntries(pj.rows.map((r) => [r.series, r]));
+  document.getElementById("month-table").replaceChildren(simpleTable(
+    ["Serie", "Acumulado del mes", "Proyección de cierre", "Banda 10–90 %", `Mes anterior (${month.previous})`],
+    order.filter((k) => bySeries[k]).map((k) => {
+      const r = bySeries[k];
+      return el("tr", {}, textCell(seriesName(k, "imd")), textCell(f1(r.to_date)), el("td", { textContent: f1(r.projected), style: "font-weight:650" }), textCell(`${f1(r.low)} a ${f1(r.high)}`), textCell(f1(r.previous)));
+    })));
+  document.getElementById("projection-eval-note").textContent = `Emisiones del ${fmtDay(pj.period[0])} al ${fmtDay(pj.period[1])} contra el cierre de cada mes, ambos con CMO. Referencia: el acumulado del mes. MAE en R$/MWh, promedio de 12 series.`;
+  document.getElementById("projection-eval").replaceChildren(simpleTable(
+    ["Días hasta el cierre", "Emisiones", "Error de la proyección", "Error del acumulado", "Mejora"],
+    pj.summary.map((r) => el("tr", {}, textCell(r.bucket), textCell(f0(r.issues)), textCell(f1(r.mae)), textCell(f1(r.naive)), textCell(signed(r.skill) + " %")))));
 }
 
 function selectTab(name) {
@@ -530,14 +562,21 @@ function selectTab(name) {
   document.getElementById("tab-market").setAttribute("aria-selected", market);
   document.getElementById("tab-next").setAttribute("aria-selected", !market);
   renderers[name].forEach((r) => r());
-  history.replaceState(null, "", market ? "#mercado" : "#proximos-dias");
+  history.replaceState(null, "", market ? "#contexto" : "#pronosticos");
 }
 
 async function main() {
   const data = await (await fetch("data/site.json", { cache: "no-store" })).json();
   document.getElementById("freshness").textContent = `CMO hasta ${fmtDay(data.through.cmo)} · generación hasta ${fmtDay(data.through.generation)} · carga hasta ${fmtDay(data.through.load)}`;
-  document.getElementById("footer").textContent = `Datos abiertos de ONS. Conectividad con el paquete connectedness. Actualizado: ${data.generated}.`;
-  const initial = location.hash === "#proximos-dias" ? "next" : "market";
+  document.getElementById("footer").textContent = `Datos: ONS (dados abertos) y Open-Meteo (GFS). Conectividad: paquete connectedness. Independiente de Dcide; sigue la metodología pública de los Índices de Modulação. Actualizado: ${data.generated}.`;
+  const b = data.benchmark;
+  document.getElementById("price-note").replaceChildren(
+    el("b", { textContent: "Precio: CMO, no PLD. " }),
+    `El PLD de la CCEE no se puede descargar desde fuera de Brasil, así que se usa el CMO horario de ONS, limitado al piso y al techo del PLD. Contra el IMD publicado por Dcide para ${monthLabel.format(Date.parse(b.month + "-01T00:00:00Z"))}: mismo signo en ${b.same_sign} de ${b.series} series y correlación de ${nf(3).format(b.correlation)}, pero en valor absoluto nuestra prima es ${nf(2).format(b.ratio_median)} veces la suya en la mediana (${nf(2).format(b.ratio_min)} a ${nf(2).format(b.ratio_max)} en las ${b.ratio_series} series con |IMD| ≥ ${f0(b.small)} R$/MWh). Sirve para forma y dirección, no para nivel ni liquidación.`);
+  document.getElementById("model-note").replaceChildren(
+    el("b", { textContent: "Modelos. " }),
+    "XGBoost y un Transformer entrenados con CMO, hidrología y carga. XGBoost usa además el CMO semanal de DECOMP y pronósticos de radiación, viento y temperatura (GFS vía Open-Meteo) de corridas de al menos un día antes de la emisión; a D+7 no tiene clima. No reproducen DESSEM. El CMO de D+1 se publica en la tarde del día de emisión, así que el valor está sobre todo en D+2 a D+7.");
+  const initial = ["#contexto", "#mercado"].includes(location.hash) ? "market" : "next";
   document.getElementById("next").hidden = initial !== "next";
   document.getElementById("market").hidden = initial !== "market";
   renderMarket(data);
